@@ -4,14 +4,23 @@ resource "aws_key_pair" "mykey" {
 }
 
 resource "aws_instance" "master1" {
-  ami = var.AMIS_master[var.AWS_REGION]
-  instance_type = "t2.micro"
+  ami = var.AMIS[var.AWS_REGION]
+  instance_type = "t2.medium"
+  root_block_device {
+    volume_size = 10
+  }
   key_name = aws_key_pair.mykey.key_name
   vpc_security_group_ids = ["${aws_security_group.web-sg.id}"]
   tags = {Name = "master1"}
+  
+  provisioner "file" {
+    source      = "longhorn_install.sh"
+    destination = "longhorn_install.sh"
+  }
 
   provisioner "remote-exec" {
     inline = [
+      "sudo chmod u+x /home/ubuntu/longhorn_install.sh",
       "curl -sfL https://get.k3s.io | K3S_NODE_NAME=k3s-Master-1 sh -s - server --token=dfXagzaueZM8Ye --cluster-init"
     ]
   }
@@ -25,8 +34,11 @@ resource "aws_instance" "master1" {
 }
 
 resource "aws_instance" "master2" {
-  ami = var.AMIS_master[var.AWS_REGION]
-  instance_type = "t2.micro"
+  ami = var.AMIS[var.AWS_REGION]
+  instance_type = "t2.medium"
+  root_block_device {
+    volume_size = 10
+  }
   key_name = aws_key_pair.mykey.key_name
   vpc_security_group_ids = ["${aws_security_group.web-sg.id}"]
   tags = {Name = "master2"}
@@ -47,8 +59,11 @@ resource "aws_instance" "master2" {
 }
 
 resource "aws_instance" "master3" {
-  ami = var.AMIS_master[var.AWS_REGION]
-  instance_type = "t2.micro"
+  ami = var.AMIS[var.AWS_REGION]
+  instance_type = "t2.medium"
+  root_block_device {
+    volume_size = 10
+  }
   key_name = aws_key_pair.mykey.key_name
   vpc_security_group_ids = ["${aws_security_group.web-sg.id}"]
   tags = {Name = "master3"}
@@ -68,8 +83,8 @@ resource "aws_instance" "master3" {
 }
 
 resource "aws_instance" "worker1" {
-  ami = var.AMIS_worker[var.AWS_REGION]
-  instance_type = "c6g.medium"
+  ami = var.AMIS[var.AWS_REGION]
+  instance_type = "t2.micro"
   key_name = aws_key_pair.mykey.key_name
   vpc_security_group_ids = ["${aws_security_group.web-sg.id}"]
   tags = {Name = "worker1"}
@@ -89,8 +104,8 @@ resource "aws_instance" "worker1" {
 }
 
 resource "aws_instance" "worker2" {
-  ami = var.AMIS_worker[var.AWS_REGION]
-  instance_type = "c6g.medium"
+  ami = var.AMIS[var.AWS_REGION]
+  instance_type = "t2.micro"
   key_name = aws_key_pair.mykey.key_name
   vpc_security_group_ids = ["${aws_security_group.web-sg.id}"]
   tags = {Name = "worker2"}
@@ -110,8 +125,8 @@ resource "aws_instance" "worker2" {
 }
 
 resource "aws_instance" "worker3" {
-  ami = var.AMIS_worker[var.AWS_REGION]
-  instance_type = "c6g.medium"
+  ami = var.AMIS[var.AWS_REGION]
+  instance_type = "t2.micro"
   key_name = aws_key_pair.mykey.key_name
   vpc_security_group_ids = ["${aws_security_group.web-sg.id}"]
   tags = {Name = "worker3"}
@@ -130,6 +145,22 @@ resource "aws_instance" "worker3" {
 
 }
 
+resource "null_resource" "master_1_remote_exec" {
+  
+  depends_on = [ aws_instance.master1 , aws_instance.worker3 ]
+  provisioner "remote-exec" {
+    inline = [
+      "bash longhorn_install.sh"
+    ]
+  } 
+  connection { 
+    host = coalesce(aws_instance.master1.public_ip, aws_instance.master1.private_ip)
+    type = "ssh"
+    user = var.INSTANCE_USERNAME
+    private_key = file(var.PATH_TO_PRIVATE_KEY)
+    
+  }
+}
 
 resource "aws_security_group" "web-sg" {
   name        = "web-sg"
@@ -149,4 +180,8 @@ resource "aws_security_group" "web-sg" {
     cidr_blocks     = ["0.0.0.0/0"]
 
   }
+}
+
+output "master_instance_ip" {
+  value = aws_instance.master1.public_ip
 }
